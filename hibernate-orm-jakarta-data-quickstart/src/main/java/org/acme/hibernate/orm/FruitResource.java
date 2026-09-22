@@ -1,29 +1,22 @@
 package org.acme.hibernate.orm;
 
-import java.util.List;
-
-import org.jboss.logging.Logger;
-
-import jakarta.data.Order;
-import jakarta.data.Sort;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.LongCounter;
+import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.DELETE;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.PUT;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-
-import io.micrometer.core.instrument.MeterRegistry; 
-import io.opentelemetry.api.trace.Span; 
-import io.opentelemetry.instrumentation.annotations.WithSpan;
-
+import java.util.List;
+import org.hibernate.Sort;
+import org.hibernate.query.Order;
 
 @Path("fruits")
 @ApplicationScoped
@@ -32,62 +25,110 @@ import io.opentelemetry.instrumentation.annotations.WithSpan;
 @Transactional
 public class FruitResource {
 
-	@Inject
-	FruitRepository repository;
+    @Inject
+    FruitRepository repository;
 
-	@Inject MeterRegistry registry;
+    @Inject
+    Meter meter;
 
-	@GET
-	@WithSpan("get-fruits")
-	public List<Fruit> get() {
-		registry.counter("app.fruits.requests.total", "action", "get_fruits").increment();
-		List fruits = repository.findAll( Order.by( Sort.asc( Fruit_.NAME ) ) ).toList();
-		Span.current().setAttribute("app.fruits.count", fruits.size());
-		return fruits;
-	}
+    @Inject
+    Tracer tracer;
 
-	@GET
-	@Path("{id}")
-	@WithSpan("get-fruit")	
-	public Fruit getSingle(Integer id) {
-		return repository.findById( id )
-				.orElseThrow( () -> new WebApplicationException( "Fruit with id of %d does not exist.".formatted( id ), 404 ) );
-	}
+    private LongCounter requestCounter;
 
-	@POST
-	@Transactional
-	@WithSpan("create-fruit")
-	public Response create(Fruit fruit) {
-		if ( fruit.getId() != null ) {
-			throw new WebApplicationException( "Id was invalidly set on request.", 422 );
-		}
+    @PostConstruct
+    void initMetrics() {
+        this.requestCounter = meter.counterBuilder("app_fruits_requests_total")
+                .setDescription("Tracks total fruit resource API requests")
+                .setUnit("1")
+                .build();
+    }
 
-		repository.insert( fruit );
-		registry.counter("app.fruits.requests.total", "action", "create").increment();
-		return Response.ok( fruit ).status( 201 ).build();
-	}
+    @GET
+    public List<Fruit> get() {
+        requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "get_fruits"));
 
-	@PUT
-	@Path("{id}")
-	@Transactional
-	@WithSpan("update-fruit")
-	public Fruit update(Integer id, Fruit fruit) {
-		if ( fruit.getName() == null ) {
-			throw new WebApplicationException( "Fruit Name was not set on request.", 422 );
-		}
+        Span dbSpan = tracer.spanBuilder("repository.findAll").startSpan();
+        List<Fruit> fruits;
+        try (Scope scope = dbSpan.makeCurrent()) {
+            fruits = repository.findAll(Order.by(Sort.asc(Fruit_.NAME))).toList();
+        } finally {
+            dbSpan.end();
+        }
 
-		repository.update( id, fruit.getName() );
-		registry.counter("app.fruits.requests.total", "action", "update").increment();
-		return fruit;
-	}
+        Span.current().setAttribute("app.fruits.count", fruits.size());
 
-	@DELETE
-	@Path("{id}")
-	@Transactional
-	@WithSpan("delete-fruit")
-	public Response delete(Integer id) {
-		repository.delete( id );
-		registry.counter("app.fruits.requests.total", "action", "delete").increment();
-		return Response.status( 204 ).build();
-	}
+        return fruits;
+    }
+
+    @GET
+    @Path("{id}")
+    public Fruit getSingle(@PathParam("id") Integer id) {
+        requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "get_single"));
+        Span.current().setAttribute("app.fruit.id", id);
+
+        Span dbSpan = tracer.spanBuilder("repository.findById").startSpan();
+        try (Scope scope = dbSpan.makeCurrent()) {
+            return repository.findById(id)
+                    .orElseThrow(() -> new WebApplicationException(
+                            "Fruit with id of %d does not exist.".formatted(id), 404));
+        } finally {
+            dbSpan.end();
+        }
+    }
+
+    @POST
+    public Response create(Fruit fruit) {
+        if (fruit.getId() != null) {
+            throw new WebApplicationException("Id was invalidly set on request.", 422);
+        }
+
+        requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "create"));
+
+        Span dbSpan = tracer.spanBuilder("repository.insert").startSpan();
+        try (Scope scope = dbSpan.makeCurrent()) {
+            repository.insert(fruit);
+        } finally {
+            dbSpan.end();
+        }
+
+        Span.current().setAttribute("app.fruit.name", fruit.getName());
+        return Response.ok(fruit).status(201).build();
+    }
+
+    @PUT
+    @Path("{id}")
+    public Fruit update(@PathParam("id") Integer id, Fruit fruit) {
+        if (fruit.getName() == null) {
+            throw new WebApplicationException("Fruit Name was not set on request.", 422);
+        }
+
+        requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "update"));
+        Span.current().setAttribute("app.fruit.id", id);
+
+        Span dbSpan = tracer.spanBuilder("repository.update").startSpan();
+        try (Scope scope = dbSpan.makeCurrent()) {
+            repository.update(id, fruit.getName());
+        } finally {
+            dbSpan.end();
+        }
+
+        return fruit;
+    }
+
+    @DELETE
+    @Path("{id}")
+    public Response delete(@PathParam("id") Integer id) {
+        requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "delete"));
+        Span.current().setAttribute("app.fruit.id", id);
+
+        Span dbSpan = tracer.spanBuilder("repository.delete").startSpan();
+        try (Scope scope = dbSpan.makeCurrent()) {
+            repository.delete(id);
+        } finally {
+            dbSpan.end();
+        }
+
+        return Response.status(204).build();
+    }
 }
