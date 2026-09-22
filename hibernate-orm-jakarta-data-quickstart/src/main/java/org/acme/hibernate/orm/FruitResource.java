@@ -41,8 +41,9 @@ public class FruitResource {
 	@WithSpan("get-fruits")
 	public List<Fruit> get() {
 		registry.counter("app.fruits.requests.total", "action", "get_fruits").increment();
+		List fruits = repository.findAll( Order.by( Sort.asc( Fruit_.NAME ) ) ).toList();
 		Span.current().setAttribute("app.fruits.count", fruits.size());
-		return repository.findAll( Order.by( Sort.asc( Fruit_.NAME ) ) ).toList();
+		return fruits;
 	}
 
 	@GET
