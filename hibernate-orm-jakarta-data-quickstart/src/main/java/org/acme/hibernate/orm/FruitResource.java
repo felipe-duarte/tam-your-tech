@@ -5,8 +5,6 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Span;
-import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Scope;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -32,9 +30,6 @@ public class FruitResource {
     @Inject
     Meter meter;
 
-    @Inject
-    Tracer tracer;
-
     private LongCounter requestCounter;
 
     @PostConstruct
@@ -49,16 +44,10 @@ public class FruitResource {
     public List<Fruit> get() {
         requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "get_fruits"));
 
-        Span dbSpan = tracer.spanBuilder("repository.findAll").startSpan();
-        List<Fruit> fruits;
-        try (Scope scope = dbSpan.makeCurrent()) {
-            fruits = repository.findAll(Order.by(Sort.asc("name"))).toList();
-        } finally {
-            dbSpan.end();
-        }
+        List<Fruit> fruits = repository.findAll(Order.by(Sort.asc("name"))).toList();
 
+        // Safely enrich the automatically created HTTP server span
         Span.current().setAttribute("app.fruits.count", fruits.size());
-
         return fruits;
     }
 
@@ -68,14 +57,9 @@ public class FruitResource {
         requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "get_single"));
         Span.current().setAttribute("app.fruit.id", id);
 
-        Span dbSpan = tracer.spanBuilder("repository.findById").startSpan();
-        try (Scope scope = dbSpan.makeCurrent()) {
-            return repository.findById(id)
-                    .orElseThrow(() -> new WebApplicationException(
-                            "Fruit with id of %d does not exist.".formatted(id), 404));
-        } finally {
-            dbSpan.end();
-        }
+        return repository.findById(id)
+                .orElseThrow(() -> new WebApplicationException(
+                        "Fruit with id of %d does not exist.".formatted(id), 404));
     }
 
     @POST
@@ -86,12 +70,7 @@ public class FruitResource {
 
         requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "create"));
 
-        Span dbSpan = tracer.spanBuilder("repository.insert").startSpan();
-        try (Scope scope = dbSpan.makeCurrent()) {
-            repository.insert(fruit);
-        } finally {
-            dbSpan.end();
-        }
+        repository.insert(fruit);
 
         Span.current().setAttribute("app.fruit.name", fruit.getName());
         return Response.ok(fruit).status(201).build();
@@ -107,13 +86,7 @@ public class FruitResource {
         requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "update"));
         Span.current().setAttribute("app.fruit.id", id);
 
-        Span dbSpan = tracer.spanBuilder("repository.update").startSpan();
-        try (Scope scope = dbSpan.makeCurrent()) {
-            repository.update(id, fruit.getName());
-        } finally {
-            dbSpan.end();
-        }
-
+        repository.update(id, fruit.getName());
         return fruit;
     }
 
@@ -123,13 +96,8 @@ public class FruitResource {
         requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "delete"));
         Span.current().setAttribute("app.fruit.id", id);
 
-        Span dbSpan = tracer.spanBuilder("repository.delete").startSpan();
-        try (Scope scope = dbSpan.makeCurrent()) {
-            repository.delete(id);
-        } finally {
-            dbSpan.end();
-        }
-
+        repository.delete(id);
         return Response.status(204).build();
     }
 }
+
