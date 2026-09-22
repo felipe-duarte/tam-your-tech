@@ -35,9 +35,13 @@ public class FruitResource {
 	@Inject
 	FruitRepository repository;
 
+	@Inject MeterRegistry registry;
+
 	@GET
-	@WithSpan("get-fruitz")
+	@WithSpan("get-fruits")
 	public List<Fruit> get() {
+		registry.counter("app.fruits.requests.total", "action", "get\_fruits").increment();
+		Span.current().setAttribute("app.fruits.count", fruits.size());
 		return repository.findAll( Order.by( Sort.asc( Fruit_.NAME ) ) ).toList();
 	}
 
@@ -58,6 +62,7 @@ public class FruitResource {
 		}
 
 		repository.insert( fruit );
+		registry.counter("app.fruits.requests.total", "action", "create").increment();
 		return Response.ok( fruit ).status( 201 ).build();
 	}
 
@@ -71,7 +76,7 @@ public class FruitResource {
 		}
 
 		repository.update( id, fruit.getName() );
-
+		registry.counter("app.fruits.requests.total", "action", "update").increment();
 		return fruit;
 	}
 
@@ -81,6 +86,7 @@ public class FruitResource {
 	@WithSpan("delete-fruit")
 	public Response delete(Integer id) {
 		repository.delete( id );
+		registry.counter("app.fruits.requests.total", "action", "delete").increment();
 		return Response.status( 204 ).build();
 	}
 }
