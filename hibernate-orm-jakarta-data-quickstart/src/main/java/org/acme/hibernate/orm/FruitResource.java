@@ -15,7 +15,8 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.List;
-import jakarta.data.Order; 
+
+import jakarta.data.Order;
 import jakarta.data.Sort;
 
 @Path("fruits")
@@ -51,7 +52,7 @@ public class FruitResource {
         Span dbSpan = tracer.spanBuilder("repository.findAll").startSpan();
         List<Fruit> fruits;
         try (Scope scope = dbSpan.makeCurrent()) {
-            fruits = repository.findAll(Order.by(Sort.asc(Fruit_.NAME))).toList();
+            fruits = repository.findAll(Order.by(Sort.asc("name"))).toList();
         } finally {
             dbSpan.end();
         }
