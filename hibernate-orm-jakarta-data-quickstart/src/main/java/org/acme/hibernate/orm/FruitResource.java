@@ -15,8 +15,8 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.List;
-import org.hibernate.Sort;
-import org.hibernate.query.Order;
+import jakarta.data.Order; 
+import jakarta.data.Sort;
 
 @Path("fruits")
 @ApplicationScoped
