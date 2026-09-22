@@ -5,7 +5,6 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Span;
-import io.smallrye.common.annotation.Blocking;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -22,8 +21,6 @@ import jakarta.data.Sort;
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@Transactional
-@Blocking
 public class FruitResource {
 
     @Inject
@@ -65,6 +62,7 @@ public class FruitResource {
     }
 
     @POST
+    @Transactional
     public Response create(Fruit fruit) {
         if (fruit.getId() != null) {
             throw new WebApplicationException("Id was invalidly set on request.", 422);
@@ -80,6 +78,7 @@ public class FruitResource {
 
     @PUT
     @Path("{id}")
+    @Transactional
     public Fruit update(@PathParam("id") Integer id, Fruit fruit) {
         if (fruit.getName() == null) {
             throw new WebApplicationException("Fruit Name was not set on request.", 422);
@@ -94,6 +93,7 @@ public class FruitResource {
 
     @DELETE
     @Path("{id}")
+    @Transactional
     public Response delete(@PathParam("id") Integer id) {
         requestCounter.add(1, Attributes.of(AttributeKey.stringKey("action"), "delete"));
         Span.current().setAttribute("app.fruit.id", id);
