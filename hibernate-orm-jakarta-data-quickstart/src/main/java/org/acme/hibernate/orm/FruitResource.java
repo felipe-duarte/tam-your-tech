@@ -20,6 +20,11 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import io.micrometer.core.instrument.MeterRegistry; 
+import io.opentelemetry.api.trace.Span; 
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+
+
 @Path("fruits")
 @ApplicationScoped
 @Produces(MediaType.APPLICATION_JSON)
@@ -31,12 +36,14 @@ public class FruitResource {
 	FruitRepository repository;
 
 	@GET
+	@WithSpan("get-fruitz")
 	public List<Fruit> get() {
 		return repository.findAll( Order.by( Sort.asc( Fruit_.NAME ) ) ).toList();
 	}
 
 	@GET
 	@Path("{id}")
+	@WithSpan("get-fruit")	
 	public Fruit getSingle(Integer id) {
 		return repository.findById( id )
 				.orElseThrow( () -> new WebApplicationException( "Fruit with id of %d does not exist.".formatted( id ), 404 ) );
@@ -44,6 +51,7 @@ public class FruitResource {
 
 	@POST
 	@Transactional
+	@WithSpan("create-fruit")
 	public Response create(Fruit fruit) {
 		if ( fruit.getId() != null ) {
 			throw new WebApplicationException( "Id was invalidly set on request.", 422 );
@@ -56,6 +64,7 @@ public class FruitResource {
 	@PUT
 	@Path("{id}")
 	@Transactional
+	@WithSpan("update-fruit")
 	public Fruit update(Integer id, Fruit fruit) {
 		if ( fruit.getName() == null ) {
 			throw new WebApplicationException( "Fruit Name was not set on request.", 422 );
@@ -69,6 +78,7 @@ public class FruitResource {
 	@DELETE
 	@Path("{id}")
 	@Transactional
+	@WithSpan("delete-fruit")
 	public Response delete(Integer id) {
 		repository.delete( id );
 		return Response.status( 204 ).build();
