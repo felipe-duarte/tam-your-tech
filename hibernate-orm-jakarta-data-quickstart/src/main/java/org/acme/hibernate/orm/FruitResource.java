@@ -26,17 +26,18 @@ public class FruitResource {
     @Inject
     FruitRepository repository;
 
-    @Inject
-    Meter meter;
+    @Inject 
+    OpenTelemetry openTelemetry;
 
     private LongCounter requestCounter;
 
     @PostConstruct
     void initMetrics() {
+        Meter meter = openTelemetry.getMeter("org.acme.hibernate"); 
         this.requestCounter = meter.counterBuilder("app_fruits_requests_total")
-                .setDescription("Tracks total fruit resource API requests")
-                .setUnit("1")
-                .build();
+            .setDescription("Tracks total fruit resource API requests")
+            .setUnit("1")
+            .build();
     }
 
     @GET
